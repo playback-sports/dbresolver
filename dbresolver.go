@@ -1,6 +1,7 @@
 package dbresolver
 
 import (
+	"database/sql"
 	"errors"
 	"sync"
 
@@ -188,4 +189,34 @@ func (dr *DBResolver) resolve(stmt *gorm.Statement, op Operation) gorm.ConnPool 
 	}
 
 	return stmt.ConnPool
+}
+
+type ResolverConnPoolStats struct {
+	Connections int           `json:"connections"`
+	Source      []sql.DBStats `json:"source"`
+	Replicas    []sql.DBStats `json:"replicas"`
+}
+
+func (dr *DBResolver) GetConnPoolStats() ResolverConnPoolStats {
+	sourceStats := make([]sql.DBStats, 0)
+	replicaStats := make([]sql.DBStats, 0)
+	var connections int
+	globalResolver := dr.global
+	for _, connPool := range globalResolver.sources {
+		if db, ok := connPool.(*sql.DB); ok {
+			sourceStats = append(sourceStats, db.Stats())
+			connections++
+		}
+	}
+	for _, connPool := range globalResolver.replicas {
+		if db, ok := connPool.(*sql.DB); ok {
+			replicaStats = append(replicaStats, db.Stats())
+			connections++
+		}
+	}
+	return ResolverConnPoolStats{
+		Connections: connections,
+		Source:      sourceStats,
+		Replicas:    replicaStats,
+	}
 }
