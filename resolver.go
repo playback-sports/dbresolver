@@ -7,6 +7,8 @@ import (
 type resolver struct {
 	sources           []gorm.ConnPool
 	replicas          []gorm.ConnPool
+	sourceNames       []string
+	replicaNames      []string
 	policy            Policy
 	dbResolver        *DBResolver
 	traceResolverMode bool

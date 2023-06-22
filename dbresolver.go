@@ -25,6 +25,8 @@ type DBResolver struct {
 type Config struct {
 	Sources           []gorm.Dialector
 	Replicas          []gorm.Dialector
+	SourceNames       []string
+	ReplicaNames      []string
 	Policy            Policy
 	datas             []interface{}
 	TraceResolverMode bool
@@ -90,13 +92,13 @@ func (dr *DBResolver) compileConfig(config Config) (err error) {
 
 	if len(config.Sources) == 0 {
 		r.sources = []gorm.ConnPool{connPool}
-	} else if r.sources, err = dr.convertToConnPool(config.Sources); err != nil {
+	} else if r.sources, r.sourceNames, err = dr.convertToConnPool(config.Sources); err != nil {
 		return err
 	}
 
 	if len(config.Replicas) == 0 {
 		r.replicas = r.sources
-	} else if r.replicas, err = dr.convertToConnPool(config.Replicas); err != nil {
+	} else if r.replicas, r.replicaNames, err = dr.convertToConnPool(config.Replicas); err != nil {
 		return err
 	}
 
@@ -132,8 +134,10 @@ func (dr *DBResolver) compileConfig(config Config) (err error) {
 	return nil
 }
 
-func (dr *DBResolver) convertToConnPool(dialectors []gorm.Dialector) (connPools []gorm.ConnPool, err error) {
+func (dr *DBResolver) convertToConnPool(dialectors []gorm.Dialector) (connPools []gorm.ConnPool, names []string, err error) {
 	config := *dr.DB.Config
+	connNames := make([]string, 0)
+	index := 0
 	for _, dialector := range dialectors {
 		if db, err := gorm.Open(dialector, &config); err == nil {
 			connPool := db.Config.ConnPool
@@ -149,12 +153,14 @@ func (dr *DBResolver) convertToConnPool(dialectors []gorm.Dialector) (connPools 
 			}
 
 			connPools = append(connPools, connPool)
+			connNames = append(connNames, names[index])
+			index++
 		} else {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 
-	return connPools, err
+	return connPools, connNames, err
 }
 
 func (dr *DBResolver) resolve(stmt *gorm.Statement, op Operation) gorm.ConnPool {
@@ -191,26 +197,37 @@ func (dr *DBResolver) resolve(stmt *gorm.Statement, op Operation) gorm.ConnPool 
 	return stmt.ConnPool
 }
 
+type ConnPoolStats struct {
+	Name  string
+	Stats sql.DBStats
+}
+
 type ResolverConnPoolStats struct {
-	Connections int           `json:"connections"`
-	Source      []sql.DBStats `json:"source"`
-	Replicas    []sql.DBStats `json:"replicas"`
+	Connections int             `json:"connections"`
+	Source      []ConnPoolStats `json:"source"`
+	Replicas    []ConnPoolStats `json:"replicas"`
 }
 
 func (dr *DBResolver) GetConnPoolStats() ResolverConnPoolStats {
-	sourceStats := make([]sql.DBStats, 0)
-	replicaStats := make([]sql.DBStats, 0)
+	sourceStats := make([]ConnPoolStats, 0)
+	replicaStats := make([]ConnPoolStats, 0)
 	var connections int
 	globalResolver := dr.global
-	for _, connPool := range globalResolver.sources {
+	for index, connPool := range globalResolver.sources {
 		if db, ok := connPool.(*sql.DB); ok {
-			sourceStats = append(sourceStats, db.Stats())
+			sourceStats = append(sourceStats, ConnPoolStats{
+				Name:  globalResolver.sourceNames[index],
+				Stats: db.Stats(),
+			})
 			connections++
 		}
 	}
-	for _, connPool := range globalResolver.replicas {
+	for index, connPool := range globalResolver.replicas {
 		if db, ok := connPool.(*sql.DB); ok {
-			replicaStats = append(replicaStats, db.Stats())
+			sourceStats = append(sourceStats, ConnPoolStats{
+				Name:  globalResolver.sourceNames[index],
+				Stats: db.Stats(),
+			})
 			connections++
 		}
 	}
