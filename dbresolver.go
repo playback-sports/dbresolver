@@ -1,8 +1,10 @@
 package dbresolver
 
 import (
+	"context"
 	"database/sql"
 	"errors"
+	"log"
 	"sync"
 
 	"gorm.io/gorm"
@@ -219,4 +221,52 @@ func (dr *DBResolver) GetConnPoolStats() ResolverConnPoolStats {
 		Source:      sourceStats,
 		Replicas:    replicaStats,
 	}
+}
+
+func hydrateConnections(db *sql.DB, conns, workers int) error {
+	var wg sync.WaitGroup
+	work := make(chan bool)
+	connChan := make(chan *sql.Conn, conns)
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range work {
+				conn, err := db.Conn(context.Background())
+				if err != nil {
+					log.Printf("error opening hydration conn: %s", err)
+					return
+				}
+				connChan <- conn
+			}
+		}()
+	}
+	for i := 0; i < conns; i++ {
+		work <- true
+	}
+	close(work)
+	wg.Wait()
+	close(connChan)
+	for conn := range connChan {
+		err := conn.Close()
+		if err != nil {
+			log.Printf("error closing hydration conn %s", err)
+		}
+	}
+	return nil
+}
+
+func (dr *DBResolver) HydrateConnections(conns, workers int) error {
+	globalResolver := dr.global
+	for _, connPool := range globalResolver.sources {
+		if db, ok := connPool.(*sql.DB); ok {
+			hydrateConnections(db, conns, workers)
+		}
+	}
+	for _, connPool := range globalResolver.replicas {
+		if db, ok := connPool.(*sql.DB); ok {
+			hydrateConnections(db, conns, workers)
+		}
+	}
+	return nil
 }
