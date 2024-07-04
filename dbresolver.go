@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log"
 	"sync"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -232,9 +233,11 @@ func hydrateConnections(db *sql.DB, conns, workers int) error {
 		go func() {
 			defer wg.Done()
 			for range work {
-				conn, err := db.Conn(context.Background())
+				ctx, _ := context.WithTimeout(context.Background(), time.Second*5)
+				conn, err := db.Conn(ctx)
 				if err != nil {
 					log.Printf("error opening hydration conn: %s", err)
+					connChan <- nil
 					return
 				}
 				connChan <- conn
@@ -248,6 +251,9 @@ func hydrateConnections(db *sql.DB, conns, workers int) error {
 	wg.Wait()
 	close(connChan)
 	for conn := range connChan {
+		if conn == nil {
+			continue
+		}
 		err := conn.Close()
 		if err != nil {
 			log.Printf("error closing hydration conn %s", err)
