@@ -25,9 +25,23 @@ type DBResolver struct {
 	compileCallbacks []func(gorm.ConnPool) error
 }
 
+type NamedDialectors []NamedDialector
+
+type NamedDialector struct {
+	Name      string
+	Dialector gorm.Dialector
+}
+
+func (nd NamedDialectors) Dialectors() (dialectors []gorm.Dialector) {
+	for _, d := range nd {
+		dialectors = append(dialectors, d.Dialector)
+	}
+	return dialectors
+}
+
 type Config struct {
-	Sources           []gorm.Dialector
-	Replicas          []gorm.Dialector
+	Sources           NamedDialectors
+	Replicas          NamedDialectors
 	Policy            Policy
 	datas             []interface{}
 	TraceResolverMode bool
@@ -92,7 +106,12 @@ func (dr *DBResolver) compileConfig(config Config) (err error) {
 	}
 
 	if len(config.Sources) == 0 {
-		r.sources = []gorm.ConnPool{connPool}
+		r.sources = []NamedConnPool{
+			{
+				Name:     "Default",
+				ConnPool: connPool,
+			},
+		}
 	} else if r.sources, err = dr.convertToConnPool(config.Sources); err != nil {
 		return err
 	}
@@ -135,10 +154,10 @@ func (dr *DBResolver) compileConfig(config Config) (err error) {
 	return nil
 }
 
-func (dr *DBResolver) convertToConnPool(dialectors []gorm.Dialector) (connPools []gorm.ConnPool, err error) {
+func (dr *DBResolver) convertToConnPool(dialectors NamedDialectors) (connPools []NamedConnPool, err error) {
 	config := *dr.DB.Config
-	for _, dialector := range dialectors {
-		if db, err := gorm.Open(dialector, &config); err == nil {
+	for _, d := range dialectors {
+		if db, err := gorm.Open(d.Dialector, &config); err == nil {
 			connPool := db.Config.ConnPool
 			if preparedStmtDB, ok := connPool.(*gorm.PreparedStmtDB); ok {
 				connPool = preparedStmtDB.ConnPool
@@ -151,7 +170,10 @@ func (dr *DBResolver) convertToConnPool(dialectors []gorm.Dialector) (connPools 
 				PreparedSQL: make([]string, 0, 100),
 			}
 
-			connPools = append(connPools, connPool)
+			connPools = append(connPools, NamedConnPool{
+				ConnPool: connPool,
+				Name:     d.Name,
+			})
 		} else {
 			return nil, err
 		}
@@ -194,26 +216,37 @@ func (dr *DBResolver) resolve(stmt *gorm.Statement, op Operation) gorm.ConnPool 
 	return stmt.ConnPool
 }
 
+type ResolverConnStats struct {
+	Stats sql.DBStats `json:",inline"`
+	Name  string      `json:"name"`
+}
+
 type ResolverConnPoolStats struct {
-	Connections int           `json:"connections"`
-	Source      []sql.DBStats `json:"source"`
-	Replicas    []sql.DBStats `json:"replicas"`
+	Connections int                 `json:"connections"`
+	Source      []ResolverConnStats `json:"source"`
+	Replicas    []ResolverConnStats `json:"replicas"`
 }
 
 func (dr *DBResolver) GetConnPoolStats() ResolverConnPoolStats {
-	sourceStats := make([]sql.DBStats, 0)
-	replicaStats := make([]sql.DBStats, 0)
+	sourceStats := make([]ResolverConnStats, 0)
+	replicaStats := make([]ResolverConnStats, 0)
 	var connections int
 	globalResolver := dr.global
-	for _, connPool := range globalResolver.sources {
-		if db, ok := connPool.(*sql.DB); ok {
-			sourceStats = append(sourceStats, db.Stats())
+	for _, s := range globalResolver.sources {
+		if db, ok := s.ConnPool.(*sql.DB); ok {
+			sourceStats = append(sourceStats, ResolverConnStats{
+				Name:  s.Name,
+				Stats: db.Stats(),
+			})
 			connections++
 		}
 	}
-	for _, connPool := range globalResolver.replicas {
-		if db, ok := connPool.(*sql.DB); ok {
-			replicaStats = append(replicaStats, db.Stats())
+	for _, r := range globalResolver.replicas {
+		if db, ok := r.ConnPool.(*sql.DB); ok {
+			replicaStats = append(replicaStats, ResolverConnStats{
+				Name:  r.Name,
+				Stats: db.Stats(),
+			})
 			connections++
 		}
 	}
@@ -264,13 +297,13 @@ func hydrateConnections(db *sql.DB, conns, workers int) error {
 
 func (dr *DBResolver) HydrateConnections(conns, workers int) error {
 	globalResolver := dr.global
-	for _, connPool := range globalResolver.sources {
-		if db, ok := connPool.(*sql.DB); ok {
+	for _, s := range globalResolver.sources {
+		if db, ok := s.ConnPool.(*sql.DB); ok {
 			hydrateConnections(db, conns, workers)
 		}
 	}
-	for _, connPool := range globalResolver.replicas {
-		if db, ok := connPool.(*sql.DB); ok {
+	for _, r := range globalResolver.replicas {
+		if db, ok := r.ConnPool.(*sql.DB); ok {
 			hydrateConnections(db, conns, workers)
 		}
 	}
