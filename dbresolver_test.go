@@ -62,15 +62,15 @@ func TestDBResolver(t *testing.T) {
 		}
 
 		if err := DB.Use(dbresolver.Register(dbresolver.Config{
-			Sources: []gorm.Dialector{mysql.Open("gorm:gorm@tcp(localhost:9911)/gorm?charset=utf8&parseTime=True&loc=Local")},
-			Replicas: []gorm.Dialector{
-				mysql.Open("gorm:gorm@tcp(localhost:9912)/gorm?charset=utf8&parseTime=True&loc=Local"),
-				mysql.Open("gorm:gorm@tcp(localhost:9913)/gorm?charset=utf8&parseTime=True&loc=Local"),
+			Sources: []dbresolver.NamedDialector{{Dialector: mysql.Open("gorm:gorm@tcp(localhost:9911)/gorm?charset=utf8&parseTime=True&loc=Local")}},
+			Replicas: []dbresolver.NamedDialector{
+				{Dialector: mysql.Open("gorm:gorm@tcp(localhost:9912)/gorm?charset=utf8&parseTime=True&loc=Local")},
+				{Dialector: mysql.Open("gorm:gorm@tcp(localhost:9913)/gorm?charset=utf8&parseTime=True&loc=Local")},
 			},
 			TraceResolverMode: true,
 		}).Register(dbresolver.Config{
-			Sources:           []gorm.Dialector{mysql.Open("gorm:gorm@tcp(localhost:9914)/gorm?charset=utf8&parseTime=True&loc=Local")},
-			Replicas:          []gorm.Dialector{mysql.Open("gorm:gorm@tcp(localhost:9913)/gorm?charset=utf8&parseTime=True&loc=Local")},
+			Sources:           []dbresolver.NamedDialector{{Dialector: mysql.Open("gorm:gorm@tcp(localhost:9914)/gorm?charset=utf8&parseTime=True&loc=Local")}},
+			Replicas:          []dbresolver.NamedDialector{{Dialector: mysql.Open("gorm:gorm@tcp(localhost:9913)/gorm?charset=utf8&parseTime=True&loc=Local")}},
 			TraceResolverMode: true,
 		}, "users", &Product{}).SetMaxOpenConns(5)); err != nil {
 			t.Fatalf("failed to use plugin, got error: %v", err)
