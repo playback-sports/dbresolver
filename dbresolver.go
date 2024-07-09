@@ -295,25 +295,35 @@ func hydrateConnections(db *sql.DB, conns, workers int) error {
 	return nil
 }
 
-func (dr *DBResolver) HydrateConnections(conns, workers int) error {
+func (dr *DBResolver) HydrateConnections(conns, workers int) (int, error) {
+	var opened int
 	globalResolver := dr.global
 	for _, s := range globalResolver.sources {
 		if db, ok := s.ConnPool.(*sql.DB); ok {
 			diff := conns - db.Stats().OpenConnections
-			log.Printf("diff source: %d", diff)
-			if diff > 0 {
-				hydrateConnections(db, diff+1, workers)
+			if diff <= 0 {
+				continue
 			}
+			err := hydrateConnections(db, diff+1, workers)
+			if err != nil {
+				return opened, err
+			}
+			opened += diff
 		}
 	}
+
 	for _, r := range globalResolver.replicas {
 		if db, ok := r.ConnPool.(*sql.DB); ok {
 			diff := conns - db.Stats().OpenConnections
-			log.Printf("diff replica: %d", diff)
-			if diff > 0 {
-				hydrateConnections(db, diff+1, workers)
+			if diff <= 0 {
+				continue
 			}
+			err := hydrateConnections(db, diff+1, workers)
+			if err != nil {
+				return opened, err
+			}
+			opened += diff
 		}
 	}
-	return nil
+	return opened, nil
 }
