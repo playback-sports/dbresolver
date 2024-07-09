@@ -300,11 +300,11 @@ func (dr *DBResolver) HydrateConnections(conns, workers int) (int, error) {
 	globalResolver := dr.global
 	for _, s := range globalResolver.sources {
 		if db, ok := s.ConnPool.(*sql.DB); ok {
-			diff := conns - db.Stats().OpenConnections
+			diff := conns - db.Stats().OpenConnections + 1
 			if diff <= 0 {
 				continue
 			}
-			err := hydrateConnections(db, diff+1, workers)
+			err := hydrateConnections(db, diff, workers)
 			if err != nil {
 				return opened, err
 			}
@@ -314,11 +314,11 @@ func (dr *DBResolver) HydrateConnections(conns, workers int) (int, error) {
 
 	for _, r := range globalResolver.replicas {
 		if db, ok := r.ConnPool.(*sql.DB); ok {
-			diff := conns - db.Stats().OpenConnections
+			diff := conns - db.Stats().OpenConnections + 1
 			if diff <= 0 {
 				continue
 			}
-			err := hydrateConnections(db, diff+1, workers)
+			err := hydrateConnections(db, diff, workers)
 			if err != nil {
 				return opened, err
 			}
