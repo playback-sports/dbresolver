@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/sync/errgroup"
 	"gorm.io/gorm"
 )
 
@@ -295,17 +296,35 @@ func hydrateConnections(db *sql.DB, conns, workers int) error {
 	return nil
 }
 
-func (dr *DBResolver) HydrateConnections(conns, workers int) error {
+func (dr *DBResolver) HydrateConnections(conns, workers int) (int, error) {
+	var opened int
+	g := new(errgroup.Group)
 	globalResolver := dr.global
 	for _, s := range globalResolver.sources {
 		if db, ok := s.ConnPool.(*sql.DB); ok {
-			hydrateConnections(db, conns, workers)
+			diff := conns - db.Stats().OpenConnections + 1
+			if diff <= 0 {
+				continue
+			}
+			opened += diff
+			g.Go(func() error {
+				return hydrateConnections(db, diff, workers)
+			})
 		}
 	}
+
 	for _, r := range globalResolver.replicas {
 		if db, ok := r.ConnPool.(*sql.DB); ok {
-			hydrateConnections(db, conns, workers)
+			diff := conns - db.Stats().OpenConnections + 1
+			if diff <= 0 {
+				continue
+			}
+			opened += diff
+			g.Go(func() error {
+				return hydrateConnections(db, diff, workers)
+			})
 		}
 	}
-	return nil
+	err := g.Wait()
+	return opened, err
 }
