@@ -69,8 +69,8 @@ func (r *resolver) resolve(stmt *gorm.Statement, op Operation) (connPool gorm.Co
 }
 
 func (r *resolver) sourceCall(fc func(connPool gorm.ConnPool) error) error {
-	for _, r := range r.sourcesConnPools() {
-		if err := fc(r); err != nil {
+	for _, s := range r.sourcesConnPools() {
+		if err := fc(s); err != nil {
 			return err
 		}
 	}
