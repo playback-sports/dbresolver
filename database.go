@@ -80,7 +80,7 @@ func (dr *DBResolver) Call(fc func(connPool gorm.ConnPool) error) error {
 }
 
 func (dr *DBResolver) SetReplicasConnMaxIdleTime(d time.Duration) *DBResolver {
-	dr.Call(func(connPool gorm.ConnPool) error {
+	dr.ReplicasCall(func(connPool gorm.ConnPool) error {
 		if conn, ok := connPool.(interface{ SetConnMaxIdleTime(time.Duration) }); ok {
 			conn.SetConnMaxIdleTime(d)
 		} else {
@@ -93,7 +93,7 @@ func (dr *DBResolver) SetReplicasConnMaxIdleTime(d time.Duration) *DBResolver {
 }
 
 func (dr *DBResolver) SetReplicasConnMaxLifetime(d time.Duration) *DBResolver {
-	dr.Call(func(connPool gorm.ConnPool) error {
+	dr.ReplicasCall(func(connPool gorm.ConnPool) error {
 		if conn, ok := connPool.(interface{ SetConnMaxLifetime(time.Duration) }); ok {
 			conn.SetConnMaxLifetime(d)
 		} else {
@@ -106,7 +106,7 @@ func (dr *DBResolver) SetReplicasConnMaxLifetime(d time.Duration) *DBResolver {
 }
 
 func (dr *DBResolver) SetReplicasMaxIdleConns(n int) *DBResolver {
-	dr.Call(func(connPool gorm.ConnPool) error {
+	dr.ReplicasCall(func(connPool gorm.ConnPool) error {
 		if conn, ok := connPool.(interface{ SetMaxIdleConns(int) }); ok {
 			conn.SetMaxIdleConns(n)
 		} else {
@@ -119,7 +119,7 @@ func (dr *DBResolver) SetReplicasMaxIdleConns(n int) *DBResolver {
 }
 
 func (dr *DBResolver) SetReplicasMaxOpenConns(n int) *DBResolver {
-	dr.Call(func(connPool gorm.ConnPool) error {
+	dr.ReplicasCall(func(connPool gorm.ConnPool) error {
 		if conn, ok := connPool.(interface{ SetMaxOpenConns(int) }); ok {
 			conn.SetMaxOpenConns(n)
 		} else {
