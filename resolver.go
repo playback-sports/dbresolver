@@ -68,13 +68,16 @@ func (r *resolver) resolve(stmt *gorm.Statement, op Operation) (connPool gorm.Co
 	return
 }
 
-func (r *resolver) call(fc func(connPool gorm.ConnPool) error) error {
-	for _, s := range r.sourcesConnPools() {
-		if err := fc(s); err != nil {
+func (r *resolver) sourceCall(fc func(connPool gorm.ConnPool) error) error {
+	for _, r := range r.sourcesConnPools() {
+		if err := fc(r); err != nil {
 			return err
 		}
 	}
+	return nil
+}
 
+func (r *resolver) replicaCall(fc func(connPool gorm.ConnPool) error) error {
 	for _, r := range r.replicaConnPools() {
 		if err := fc(r); err != nil {
 			return err
