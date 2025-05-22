@@ -18,11 +18,12 @@ const (
 
 type DBResolver struct {
 	*gorm.DB
-	configs          []Config
-	resolvers        map[string]*resolver
-	global           *resolver
-	prepareStmtStore map[gorm.ConnPool]*gorm.PreparedStmtDB
-	compileCallbacks []func(gorm.ConnPool) error
+	configs                 []Config
+	resolvers               map[string]*resolver
+	global                  *resolver
+	prepareStmtStore        map[gorm.ConnPool]*gorm.PreparedStmtDB
+	sourceCompileCallbacks  []func(gorm.ConnPool) error
+	replicaCompileCallbacks []func(gorm.ConnPool) error
 }
 
 type NamedDialectors []NamedDialector
@@ -141,8 +142,13 @@ func (dr *DBResolver) compileConfig(config Config) (err error) {
 		return errors.New("conflicted global resolver")
 	}
 
-	for _, fc := range dr.compileCallbacks {
-		if err = r.call(fc); err != nil {
+	for _, fc := range dr.sourceCompileCallbacks {
+		if err = r.sourceCall(fc); err != nil {
+			return err
+		}
+	}
+	for _, fc := range dr.replicaCompileCallbacks {
+		if err = r.replicaCall(fc); err != nil {
 			return err
 		}
 	}
